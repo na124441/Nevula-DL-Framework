@@ -6,6 +6,8 @@ from nevula import nn
 from nevula import losses
 from nevula import optim
 from nevula import data
+from nevula import utils
+from nevula.utils.serialization import save, load, save_checkpoint, load_checkpoint
 
 
 def tensor(data, requires_grad: bool = False, shape=None):
@@ -25,4 +27,9 @@ __all__ = [
     "losses",
     "optim",
     "data",
+    "utils",
+    "save",
+    "load",
+    "save_checkpoint",
+    "load_checkpoint",
 ]

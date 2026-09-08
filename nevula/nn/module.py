@@ -130,6 +130,62 @@ class Module:
         for p in self.parameters():
             p.zero_grad()
 
+    def state_dict(self, destination: Optional[dict] = None, prefix: str = "", keep_vars: bool = False) -> dict[str, Any]:
+        """
+        Returns a dictionary containing a whole state of the module.
+        Both parameters and persistent buffers (if any) are included.
+        Keys are corresponding parameter names.
+        """
+        if destination is None:
+            destination = {}
+
+        for name, param in self.named_parameters(prefix=prefix, recurse=True):
+            if keep_vars:
+                destination[name] = param
+            else:
+                destination[name] = param.detach().clone()
+
+        return destination
+
+    def load_state_dict(self, state_dict: dict[str, Any], strict: bool = True) -> dict[str, list[str]]:
+        """
+        Copies parameters from `state_dict` into this module and its descendants.
+
+        Args:
+            state_dict: A dict containing parameters.
+            strict: Whether to strictly enforce that the keys in state_dict
+                match the keys returned by this module's state_dict() function.
+
+        Returns:
+            Dict containing 'missing_keys' and 'unexpected_keys'.
+        """
+        local_params = dict(self.named_parameters(recurse=True))
+
+        missing_keys = [k for k in local_params if k not in state_dict]
+        unexpected_keys = [k for k in state_dict if k not in local_params]
+
+        if strict:
+            error_msgs = []
+            if len(unexpected_keys) > 0:
+                error_msgs.append(f"Unexpected key(s) in state_dict: {', '.join(unexpected_keys)}.")
+            if len(missing_keys) > 0:
+                error_msgs.append(f"Missing key(s) in state_dict: {', '.join(missing_keys)}.")
+            if len(error_msgs) > 0:
+                raise RuntimeError(f"Error(s) in loading state_dict for {self.__class__.__name__}:\n\t" + "\n\t".join(error_msgs))
+
+        for name, param in local_params.items():
+            if name in state_dict:
+                saved_param = state_dict[name]
+                if tuple(param.shape) != tuple(saved_param.shape):
+                    raise RuntimeError(
+                        f"Size mismatch for {name}: copying a param with shape {saved_param.shape} "
+                        f"from checkpoint, the shape in current model is {param.shape}."
+                    )
+                for i in range(len(param.data)):
+                    param.data[i] = saved_param.data[i]
+
+        return {"missing_keys": missing_keys, "unexpected_keys": unexpected_keys}
+
     def __repr__(self) -> str:
         child_lines = []
         for key, module in self._modules.items():

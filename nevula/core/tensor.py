@@ -245,6 +245,27 @@ class Tensor:
         new_data = [self[idx] for idx in self._indices_generator()]
         return Tensor(new_data, shape=self.shape)
 
+    def clone(self) -> 'Tensor':
+        """Returns a copy of the tensor with distinct data storage."""
+        new_data = [self[idx] for idx in self._indices_generator()]
+        res = Tensor(new_data, shape=self.shape, requires_grad=self.requires_grad)
+        return res
+
+    def detach(self) -> 'Tensor':
+        """
+        Returns a new Tensor, detached from the current computational graph.
+        The returned tensor shares the same underlying data, but has requires_grad=False
+        and grad_fn=None.
+        """
+        return Tensor(
+            self.data,
+            shape=self.shape,
+            strides=self.strides,
+            offset=self.offset,
+            _clone=False,
+            requires_grad=False,
+        )
+
     # 🔄 4. Zero-Copy View Transformations
     def _reshape_raw(self, new_shape: tuple[int, ...]) -> 'Tensor':
         resolved_shape = list(new_shape)

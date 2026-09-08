@@ -4,6 +4,9 @@ from nevula.nn.container import Sequential
 from nevula.nn.linear import Linear
 from nevula.nn.activations import ReLU, Sigmoid, Tanh
 from nevula.nn.losses import Loss, MSELoss, CrossEntropyLoss
+from nevula.nn import init
+from nevula.nn import utils
+from nevula.nn.utils import clip_grad_norm_
 
 __all__ = [
     "Parameter",
@@ -16,4 +19,7 @@ __all__ = [
     "Loss",
     "MSELoss",
     "CrossEntropyLoss",
+    "init",
+    "utils",
+    "clip_grad_norm_",
 ]
