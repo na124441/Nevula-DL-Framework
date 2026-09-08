@@ -4,6 +4,7 @@ from nevula import autograd
 from nevula import core
 from nevula import nn
 from nevula import losses
+from nevula import optim
 
 
 def tensor(data, requires_grad: bool = False, shape=None):
@@ -21,4 +22,5 @@ __all__ = [
     "core",
     "nn",
     "losses",
+    "optim",
 ]
