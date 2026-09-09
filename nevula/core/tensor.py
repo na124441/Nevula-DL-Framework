@@ -410,6 +410,18 @@ class Tensor:
         _record_graph("reshape", [self], res, shape=shape)
         return res
 
+    def _transpose_raw(self, axis1: int, axis2: int) -> 'Tensor':
+        ndim = len(self.shape)
+        if axis1 < 0:
+            axis1 += ndim
+        if axis2 < 0:
+            axis2 += ndim
+        new_shape = list(self.shape)
+        new_strides = list(self.strides)
+        new_shape[axis1], new_shape[axis2] = new_shape[axis2], new_shape[axis1]
+        new_strides[axis1], new_strides[axis2] = new_strides[axis2], new_strides[axis1]
+        return Tensor(self.data, shape=tuple(new_shape), strides=tuple(new_strides), offset=self.offset, _clone=False, device=self.device)
+
     def transpose(self, axis1: int, axis2: int) -> 'Tensor':
         """Swaps two axes by simply swapping their shapes and strides."""
         ndim = len(self.shape)
@@ -426,11 +438,7 @@ class Tensor:
         if GradMode.is_enabled() and self.requires_grad:
             res = Transpose.apply(self, axis1, axis2)
         else:
-            new_shape = list(self.shape)
-            new_strides = list(self.strides)
-            new_shape[axis1], new_shape[axis2] = new_shape[axis2], new_shape[axis1]
-            new_strides[axis1], new_strides[axis2] = new_strides[axis2], new_strides[axis1]
-            res = Tensor(self.data, shape=tuple(new_shape), strides=tuple(new_strides), offset=self.offset, _clone=False, device=self.device)
+            res = self._transpose_raw(axis1, axis2)
 
         _record_graph("transpose", [self], res, axis1=axis1, axis2=axis2)
         return res

@@ -27,8 +27,8 @@ class Transpose(Function):
     def forward(ctx: Context, a: Any, axis1: int, axis2: int) -> Any:
         ctx.axis1 = axis1
         ctx.axis2 = axis2
-        return a.transpose(axis1, axis2)
+        return a._transpose_raw(axis1, axis2)
 
     @staticmethod
     def backward(ctx: Context, grad_output: Any) -> tuple:
-        return grad_output.transpose(ctx.axis1, ctx.axis2), None, None
+        return grad_output._transpose_raw(ctx.axis1, ctx.axis2), None, None

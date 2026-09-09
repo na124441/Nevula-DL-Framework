@@ -12,7 +12,8 @@ from nevula import nn
 from nevula import losses
 from nevula import optim
 from nevula import data
-from nevula import utils
+from nevula import models
+from nevula import metrics
 from nevula.utils.serialization import save, load, save_checkpoint, load_checkpoint
 
 
@@ -38,8 +39,10 @@ __all__ = [
     "engine",
     "nn",
     "losses",
+    "metrics",
     "optim",
     "data",
+    "models",
     "utils",
     "save",
     "load",
