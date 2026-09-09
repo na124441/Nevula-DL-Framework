@@ -28,7 +28,7 @@ class Sum(Function):
 
         if axis is None:
             # Reduced all dimensions to scalar
-            grad_expanded = grad_output + Tensor.zeros(in_shape)
+            grad_expanded = grad_output + Tensor.zeros(in_shape, device=grad_output.device)
         else:
             # Normalize axis to tuple of non-negative ints
             axes = (axis,) if isinstance(axis, int) else tuple(axis)
@@ -49,7 +49,7 @@ class Sum(Function):
             else:
                 grad_reshaped = grad_output
 
-            grad_expanded = grad_reshaped + Tensor.zeros(in_shape)
+            grad_expanded = grad_reshaped + Tensor.zeros(in_shape, device=grad_output.device)
 
         return grad_expanded, None, None
 
@@ -76,7 +76,7 @@ class Mean(Function):
         scaled_grad = grad_output / num_elements
 
         if axis is None:
-            grad_expanded = scaled_grad + Tensor.zeros(in_shape)
+            grad_expanded = scaled_grad + Tensor.zeros(in_shape, device=grad_output.device)
         else:
             axes = (axis,) if isinstance(axis, int) else tuple(axis)
             ndim = len(in_shape)
@@ -95,6 +95,7 @@ class Mean(Function):
             else:
                 grad_reshaped = scaled_grad
 
-            grad_expanded = grad_reshaped + Tensor.zeros(in_shape)
+            grad_expanded = grad_reshaped + Tensor.zeros(in_shape, device=grad_output.device)
 
         return grad_expanded, None, None
+

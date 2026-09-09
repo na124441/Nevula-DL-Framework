@@ -125,6 +125,23 @@ class Module:
         """Sets the module in evaluation mode."""
         return self.train(False)
 
+    def to(self, device: Union[str, Any]) -> 'Module':
+        """
+        Moves all parameters and submodules recursively to target device.
+        """
+        from nevula.backend.device import Device
+        target_device = Device(device)
+
+        for p in self.parameters(recurse=False):
+            p.to(target_device)
+
+        for module in self._modules.values():
+            if module is not None:
+                module.to(target_device)
+
+        return self
+
+
     def zero_grad(self) -> None:
         """Sets gradients of all model parameters to None."""
         for p in self.parameters():

@@ -12,7 +12,7 @@ class ReLU(Function):
         
         # Apply ReLU elementwise over raw flat data
         out_data = [max(0.0, float(a[idx])) for idx in a._indices_generator()]
-        return Tensor(out_data, shape=a.shape)
+        return Tensor(out_data, shape=a.shape, device=a.device)
 
     @staticmethod
     def backward(ctx: Context, grad_output: Any) -> tuple:
@@ -20,7 +20,7 @@ class ReLU(Function):
         a, = ctx.saved_tensors
         
         mask_data = [1.0 if float(a[idx]) > 0.0 else 0.0 for idx in a._indices_generator()]
-        mask = Tensor(mask_data, shape=a.shape)
+        mask = Tensor(mask_data, shape=a.shape, device=a.device)
         return grad_output * mask,
 
 
@@ -38,7 +38,7 @@ class Sigmoid(Function):
             return 1.0 / (1.0 + math.exp(-val))
 
         out_data = [sig(a[idx]) for idx in a._indices_generator()]
-        out = Tensor(out_data, shape=a.shape)
+        out = Tensor(out_data, shape=a.shape, device=a.device)
         ctx.save_for_backward(out)
         return out
 
@@ -54,7 +54,7 @@ class Tanh(Function):
     def forward(ctx: Context, a: Any) -> Any:
         from nevula.core.tensor import Tensor
         out_data = [math.tanh(float(a[idx])) for idx in a._indices_generator()]
-        out = Tensor(out_data, shape=a.shape)
+        out = Tensor(out_data, shape=a.shape, device=a.device)
         ctx.save_for_backward(out)
         return out
 
@@ -63,3 +63,4 @@ class Tanh(Function):
         out, = ctx.saved_tensors
         grad_a = grad_output * (1.0 - out * out)
         return grad_a,
+

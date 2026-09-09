@@ -1,4 +1,7 @@
-from typing import Any, Optional, Sequence
+from typing import Any, Optional, Sequence, Union
+import numpy as np
+from nevula.backend.device import Device
+from nevula.backend.registry import get_backend
 
 
 def _prod(shape: tuple[int, ...]) -> int:
@@ -7,6 +10,16 @@ def _prod(shape: tuple[int, ...]) -> int:
     for x in shape:
         res *= x
     return res
+
+
+def _record_graph(op: str, inputs: Sequence[Any], output: Any, **kwargs) -> None:
+    try:
+        from nevula.graph.capture import GraphCapture
+        if GraphCapture.is_active():
+            GraphCapture.record_op(op, inputs, output, **kwargs)
+    except (ImportError, Exception):
+        pass
+
 
 
 def _flatten_and_infer_shape(data) -> tuple[list, tuple[int, ...]]:
@@ -81,20 +94,35 @@ class Tensor:
         offset: int = 0,
         _clone: bool = True,
         requires_grad: bool = False,
+        device: Union[str, Device] = "cpu",
     ):
+        # 📱 Device resolution
+        if isinstance(device, Device):
+            self.device = device
+        else:
+            self.device = Device(device)
+
+        backend = get_backend(self.device.type)
+
         # 📦 1. Storage & Layout Metadata
         if isinstance(data, Tensor):
             self.data = data.data
             inferred_shape = data.shape
             inferred_strides = data.strides
             offset = data.offset
-        elif not _clone and isinstance(data, list):
+            if device == "cpu" and data.device != "cpu":
+                self.device = data.device
+        elif not _clone:
             self.data = data
-            inferred_shape = (len(data),)
+            inferred_shape = tuple(shape) if shape is not None else getattr(data, "shape", (len(data),) if hasattr(data, "__len__") else ())
+            inferred_strides = strides
+        elif isinstance(data, np.ndarray):
+            inferred_shape = data.shape
+            self.data = backend.create(data.flatten())
             inferred_strides = None
         else:
             flat_data, inferred_shape = _flatten_and_infer_shape(data)
-            self.data = flat_data
+            self.data = backend.create(flat_data)
             inferred_strides = None
 
         if shape is None:
@@ -123,6 +151,74 @@ class Tensor:
         self.grad: Optional['Tensor'] = None
         self.grad_fn: Optional[Any] = None
         self._retains_grad: bool = False
+        self.name: Optional[str] = None
+
+
+    def _check_same_device(self, other: Any) -> None:
+        """Verifies that other tensor resides on the same device."""
+        if isinstance(other, Tensor):
+            if self.device != other.device:
+                raise RuntimeError(
+                    f"Expected all tensors to be on the same device, but found {self.device.type} and {other.device.type}."
+                )
+
+    def to_array(self) -> Any:
+        """Returns a backend array view reflecting shape, strides, and offset."""
+        if self.device.type == "cpu":
+            itemsize = self.data.itemsize
+            byte_offset = self.offset * itemsize
+            byte_strides = tuple(s * itemsize for s in self.strides)
+            return np.ndarray(self.shape, dtype=self.data.dtype, buffer=self.data, offset=byte_offset, strides=byte_strides)
+        elif self.device.type == "cuda":
+            try:
+                import cupy as cp
+                itemsize = self.data.itemsize
+                byte_offset = self.offset * itemsize
+                byte_strides = tuple(s * itemsize for s in self.strides)
+                memptr = self.data.data + byte_offset
+                return cp.ndarray(self.shape, dtype=self.data.dtype, memptr=memptr, strides=byte_strides)
+            except Exception:
+                itemsize = self.data.itemsize
+                byte_offset = self.offset * itemsize
+                byte_strides = tuple(s * itemsize for s in self.strides)
+                return np.ndarray(self.shape, dtype=self.data.dtype, buffer=self.data, offset=byte_offset, strides=byte_strides)
+        else:
+            raise NotImplementedError(f"to_array not implemented for device {self.device}")
+
+    def to(self, device: Union[str, Device]) -> 'Tensor':
+        """
+        Moves tensor to specified compute device ('cpu', 'cuda').
+        Returns self if already on target device, or new Tensor on target device.
+        """
+        target_device = Device(device)
+        if self.device == target_device:
+            return self
+
+        from nevula.nn.parameter import Parameter
+        if isinstance(self, Parameter):
+            src_backend = get_backend(self.device.type)
+            dst_backend = get_backend(target_device.type)
+            src_arr = self.to_array()
+            np_arr = src_backend.to_numpy(src_arr)
+            dst_data = dst_backend.from_numpy(np_arr)
+            self.data = dst_data.flatten()
+            self.device = target_device
+            if self.grad is not None:
+                self.grad = self.grad.to(target_device)
+            return self
+
+        src_backend = get_backend(self.device.type)
+        dst_backend = get_backend(target_device.type)
+        src_arr = self.to_array()
+        np_arr = src_backend.to_numpy(src_arr)
+        dst_data = dst_backend.from_numpy(np_arr)
+
+        return Tensor(
+            dst_data,
+            requires_grad=self.requires_grad,
+            device=target_device,
+        )
+
 
     @property
     def is_leaf(self) -> bool:
@@ -182,7 +278,8 @@ class Tensor:
 
         if len(indices) == len(self.shape):
             flat_idx = self._flat_index(indices)
-            return self.data[flat_idx]
+            val = self.data[flat_idx]
+            return val.item() if hasattr(val, "item") else val
         elif len(indices) < len(self.shape):
             new_offset = self.offset
             for i, idx in enumerate(indices):
@@ -195,7 +292,7 @@ class Tensor:
 
             new_shape = self.shape[len(indices):]
             new_strides = self.strides[len(indices):]
-            return Tensor(self.data, shape=new_shape, strides=new_strides, offset=new_offset, _clone=False)
+            return Tensor(self.data, shape=new_shape, strides=new_strides, offset=new_offset, _clone=False, device=self.device)
         else:
             raise IndexError("Too many indices for tensor.")
 
@@ -215,7 +312,7 @@ class Tensor:
                 for idx in view._indices_generator():
                     view[idx] = value[idx]
             elif isinstance(value, (list, tuple)):
-                val_tensor = Tensor(value)
+                val_tensor = Tensor(value, device=self.device)
                 if view.shape != val_tensor.shape:
                     raise ValueError(f"Cannot assign structure of shape {val_tensor.shape} to view of shape {view.shape}")
                 for idx in view._indices_generator():
@@ -243,12 +340,12 @@ class Tensor:
         if self.is_contiguous() and self.offset == 0 and len(self.data) == _prod(self.shape):
             return self
         new_data = [self[idx] for idx in self._indices_generator()]
-        return Tensor(new_data, shape=self.shape)
+        return Tensor(new_data, shape=self.shape, device=self.device)
 
     def clone(self) -> 'Tensor':
         """Returns a copy of the tensor with distinct data storage."""
         new_data = [self[idx] for idx in self._indices_generator()]
-        res = Tensor(new_data, shape=self.shape, requires_grad=self.requires_grad)
+        res = Tensor(new_data, shape=self.shape, requires_grad=self.requires_grad, device=self.device)
         return res
 
     def detach(self) -> 'Tensor':
@@ -264,6 +361,7 @@ class Tensor:
             offset=self.offset,
             _clone=False,
             requires_grad=False,
+            device=self.device,
         )
 
     # 🔄 4. Zero-Copy View Transformations
@@ -291,7 +389,7 @@ class Tensor:
                 new_strides.append(current_stride)
                 current_stride *= dim
             new_strides = tuple(reversed(new_strides))
-            return Tensor(self.data, shape=resolved_shape, strides=new_strides, offset=self.offset, _clone=False)
+            return Tensor(self.data, shape=resolved_shape, strides=new_strides, offset=self.offset, _clone=False, device=self.device)
         else:
             contiguous_self = self.contiguous()
             return contiguous_self._reshape_raw(resolved_shape)
@@ -306,8 +404,11 @@ class Tensor:
         from nevula.autograd.engine import GradMode
         from nevula.autograd.functions import Reshape
         if GradMode.is_enabled() and self.requires_grad:
-            return Reshape.apply(self, shape)
-        return self._reshape_raw(shape)
+            res = Reshape.apply(self, shape)
+        else:
+            res = self._reshape_raw(shape)
+        _record_graph("reshape", [self], res, shape=shape)
+        return res
 
     def transpose(self, axis1: int, axis2: int) -> 'Tensor':
         """Swaps two axes by simply swapping their shapes and strides."""
@@ -323,14 +424,18 @@ class Tensor:
         from nevula.autograd.engine import GradMode
         from nevula.autograd.functions import Transpose
         if GradMode.is_enabled() and self.requires_grad:
-            return Transpose.apply(self, axis1, axis2)
+            res = Transpose.apply(self, axis1, axis2)
+        else:
+            new_shape = list(self.shape)
+            new_strides = list(self.strides)
+            new_shape[axis1], new_shape[axis2] = new_shape[axis2], new_shape[axis1]
+            new_strides[axis1], new_strides[axis2] = new_strides[axis2], new_strides[axis1]
+            res = Tensor(self.data, shape=tuple(new_shape), strides=tuple(new_strides), offset=self.offset, _clone=False, device=self.device)
 
-        new_shape = list(self.shape)
-        new_strides = list(self.strides)
-        new_shape[axis1], new_shape[axis2] = new_shape[axis2], new_shape[axis1]
-        new_strides[axis1], new_strides[axis2] = new_strides[axis2], new_strides[axis1]
+        _record_graph("transpose", [self], res, axis1=axis1, axis2=axis2)
+        return res
 
-        return Tensor(self.data, shape=tuple(new_shape), strides=tuple(new_strides), offset=self.offset, _clone=False)
+
 
     @property
     def T(self) -> 'Tensor':
@@ -340,275 +445,252 @@ class Tensor:
         return self.transpose(-2, -1)
 
     # ➕ 5. Raw Mathematical Operations (internal without autograd)
-    def _add_raw(self, other: 'Tensor') -> 'Tensor':
+    # ➕ 5. Raw Mathematical Operations (delegated to backend)
+    def _add_raw(self, other: Any) -> 'Tensor':
         if not isinstance(other, Tensor):
-            other = Tensor(other)
-        out_shape = broadcast_shapes(self.shape, other.shape)
-        out_data = []
-        for idx in _generate_indices(out_shape):
-            s_idx = self._broadcast_index(idx)
-            o_idx = other._broadcast_index(idx)
-            out_data.append(self[s_idx] + other[o_idx])
-        return Tensor(out_data, shape=out_shape)
+            other = Tensor(other, device=self.device)
+        self._check_same_device(other)
+        backend = get_backend(self.device.type)
+        out = backend.add(self.to_array(), other.to_array())
+        return Tensor(out, device=self.device)
 
-    def _sub_raw(self, other: 'Tensor') -> 'Tensor':
+    def _sub_raw(self, other: Any) -> 'Tensor':
         if not isinstance(other, Tensor):
-            other = Tensor(other)
-        out_shape = broadcast_shapes(self.shape, other.shape)
-        out_data = []
-        for idx in _generate_indices(out_shape):
-            s_idx = self._broadcast_index(idx)
-            o_idx = other._broadcast_index(idx)
-            out_data.append(self[s_idx] - other[o_idx])
-        return Tensor(out_data, shape=out_shape)
+            other = Tensor(other, device=self.device)
+        self._check_same_device(other)
+        backend = get_backend(self.device.type)
+        out = backend.sub(self.to_array(), other.to_array())
+        return Tensor(out, device=self.device)
 
-    def _mul_raw(self, other: 'Tensor') -> 'Tensor':
+    def _mul_raw(self, other: Any) -> 'Tensor':
         if not isinstance(other, Tensor):
-            other = Tensor(other)
-        out_shape = broadcast_shapes(self.shape, other.shape)
-        out_data = []
-        for idx in _generate_indices(out_shape):
-            s_idx = self._broadcast_index(idx)
-            o_idx = other._broadcast_index(idx)
-            out_data.append(self[s_idx] * other[o_idx])
-        return Tensor(out_data, shape=out_shape)
+            other = Tensor(other, device=self.device)
+        self._check_same_device(other)
+        backend = get_backend(self.device.type)
+        out = backend.mul(self.to_array(), other.to_array())
+        return Tensor(out, device=self.device)
 
-    def _div_raw(self, other: 'Tensor') -> 'Tensor':
+    def _div_raw(self, other: Any) -> 'Tensor':
         if not isinstance(other, Tensor):
-            other = Tensor(other)
-        out_shape = broadcast_shapes(self.shape, other.shape)
-        out_data = []
-        for idx in _generate_indices(out_shape):
-            s_idx = self._broadcast_index(idx)
-            o_idx = other._broadcast_index(idx)
-            out_data.append(self[s_idx] / other[o_idx])
-        return Tensor(out_data, shape=out_shape)
+            other = Tensor(other, device=self.device)
+        self._check_same_device(other)
+        backend = get_backend(self.device.type)
+        out = backend.div(self.to_array(), other.to_array())
+        return Tensor(out, device=self.device)
 
     def _pow_raw(self, p: Any) -> 'Tensor':
-        p_val = p.to_list() if isinstance(p, Tensor) else p
-        out_data = [self[idx] ** p_val for idx in self._indices_generator()]
-        return Tensor(out_data, shape=self.shape)
+        backend = get_backend(self.device.type)
+        if isinstance(p, Tensor):
+            self._check_same_device(p)
+            p_val = p.to_array()
+        else:
+            p_val = p
+        out = backend.pow(self.to_array(), p_val)
+        return Tensor(out, device=self.device)
 
     def _neg_raw(self) -> 'Tensor':
-        out_data = [-self[idx] for idx in self._indices_generator()]
-        return Tensor(out_data, shape=self.shape)
+        backend = get_backend(self.device.type)
+        out = backend.neg(self.to_array())
+        return Tensor(out, device=self.device)
 
-    def _matmul_raw(self, other: 'Tensor') -> 'Tensor':
+    def _matmul_raw(self, other: Any) -> 'Tensor':
         if not isinstance(other, Tensor):
-            other = Tensor(other)
-
-        # Standard 2D matrix multiplication
-        if len(self.shape) == 2 and len(other.shape) == 2:
-            m, k1 = self.shape
-            k2, n = other.shape
-            if k1 != k2:
-                raise ValueError(f"Cannot multiply matrices with shapes {self.shape} and {other.shape}")
-
-            out_data = []
-            for i in range(m):
-                for j in range(n):
-                    cell = 0.0
-                    for k in range(k1):
-                        cell += self[i, k] * other[k, j]
-                    out_data.append(cell)
-            return Tensor(out_data, shape=(m, n))
-
-        # 1D dot product
-        if len(self.shape) == 1 and len(other.shape) == 1:
-            if self.shape[0] != other.shape[0]:
-                raise ValueError(f"Cannot compute dot product with shapes {self.shape} and {other.shape}")
-            total = sum(self[i] * other[i] for i in range(self.shape[0]))
-            return Tensor(total)
-
-        # Matrix-vector or Vector-matrix or Batched
-        if len(self.shape) == 2 and len(other.shape) == 1:
-            m, k1 = self.shape
-            if k1 != other.shape[0]:
-                raise ValueError(f"Shape mismatch: {self.shape} vs {other.shape}")
-            out_data = [sum(self[i, k] * other[k] for k in range(k1)) for i in range(m)]
-            return Tensor(out_data, shape=(m,))
-
-        if len(self.shape) == 1 and len(other.shape) == 2:
-            k1, n = other.shape
-            if self.shape[0] != k1:
-                raise ValueError(f"Shape mismatch: {self.shape} vs {other.shape}")
-            out_data = [sum(self[k] * other[k, j] for k in range(k1)) for j in range(n)]
-            return Tensor(out_data, shape=(n,))
-
-        raise NotImplementedError(f"MatMul between shapes {self.shape} and {other.shape} not yet supported.")
+            other = Tensor(other, device=self.device)
+        self._check_same_device(other)
+        backend = get_backend(self.device.type)
+        out = backend.matmul(self.to_array(), other.to_array())
+        return Tensor(out, device=self.device)
 
     def _sum_raw(self, axis: Optional[Any] = None, keepdims: bool = False) -> 'Tensor':
-        if axis is None:
-            total = sum(self[idx] for idx in self._indices_generator())
-            if keepdims:
-                return Tensor([total], shape=(1,) * len(self.shape))
-            return Tensor(total)
-
-        ndim = len(self.shape)
-        axes = (axis,) if isinstance(axis, int) else tuple(axis)
-        axes_set = {ax if ax >= 0 else ax + ndim for ax in axes}
-
-        if keepdims:
-            out_shape = tuple(1 if i in axes_set else self.shape[i] for i in range(ndim))
-        else:
-            out_shape = tuple(self.shape[i] for i in range(ndim) if i not in axes_set)
-            if len(out_shape) == 0:
-                out_shape = ()
-
-        acc: dict[tuple[int, ...], float] = {}
-        for idx in self._indices_generator():
-            if keepdims:
-                out_idx = tuple(0 if i in axes_set else idx[i] for i in range(ndim))
-            else:
-                out_idx = tuple(idx[i] for i in range(ndim) if i not in axes_set)
-            acc[out_idx] = acc.get(out_idx, 0.0) + self[idx]
-
-        out_data = [acc[out_idx] for out_idx in _generate_indices(out_shape)]
-        return Tensor(out_data, shape=out_shape)
+        backend = get_backend(self.device.type)
+        out = backend.sum(self.to_array(), axis=axis, keepdims=keepdims)
+        return Tensor(out, device=self.device)
 
     def _mean_raw(self, axis: Optional[Any] = None, keepdims: bool = False) -> 'Tensor':
-        s = self._sum_raw(axis=axis, keepdims=keepdims)
-        num_elements = _prod(self.shape) // max(1, _prod(s.shape))
-        return s._div_raw(Tensor(float(num_elements)))
+        backend = get_backend(self.device.type)
+        out = backend.mean(self.to_array(), axis=axis, keepdims=keepdims)
+        return Tensor(out, device=self.device)
 
     # 🔗 6. Public Operator Overloads with Autograd Hooking
     def __add__(self, other: Any) -> 'Tensor':
         if not isinstance(other, Tensor):
-            other = Tensor(other)
+            other = Tensor(other, device=self.device)
+        self._check_same_device(other)
         from nevula.autograd.engine import GradMode
         from nevula.autograd.functions import Add
         if GradMode.is_enabled() and (self.requires_grad or other.requires_grad):
-            return Add.apply(self, other)
-        return self._add_raw(other)
+            res = Add.apply(self, other)
+        else:
+            res = self._add_raw(other)
+        _record_graph("add", [self, other], res)
+        return res
 
     def __radd__(self, other: Any) -> 'Tensor':
         return self.__add__(other)
 
     def __sub__(self, other: Any) -> 'Tensor':
         if not isinstance(other, Tensor):
-            other = Tensor(other)
+            other = Tensor(other, device=self.device)
+        self._check_same_device(other)
         from nevula.autograd.engine import GradMode
         from nevula.autograd.functions import Sub
         if GradMode.is_enabled() and (self.requires_grad or other.requires_grad):
-            return Sub.apply(self, other)
-        return self._sub_raw(other)
+            res = Sub.apply(self, other)
+        else:
+            res = self._sub_raw(other)
+        _record_graph("sub", [self, other], res)
+        return res
 
     def __rsub__(self, other: Any) -> 'Tensor':
-        return Tensor(other).__sub__(self)
+        return Tensor(other, device=self.device).__sub__(self)
 
     def __mul__(self, other: Any) -> 'Tensor':
         if not isinstance(other, Tensor):
-            other = Tensor(other)
+            other = Tensor(other, device=self.device)
+        self._check_same_device(other)
         from nevula.autograd.engine import GradMode
         from nevula.autograd.functions import Mul
         if GradMode.is_enabled() and (self.requires_grad or other.requires_grad):
-            return Mul.apply(self, other)
-        return self._mul_raw(other)
+            res = Mul.apply(self, other)
+        else:
+            res = self._mul_raw(other)
+        _record_graph("mul", [self, other], res)
+        return res
 
     def __rmul__(self, other: Any) -> 'Tensor':
         return self.__mul__(other)
 
     def __truediv__(self, other: Any) -> 'Tensor':
         if not isinstance(other, Tensor):
-            other = Tensor(other)
+            other = Tensor(other, device=self.device)
+        self._check_same_device(other)
         from nevula.autograd.engine import GradMode
         from nevula.autograd.functions import Div
         if GradMode.is_enabled() and (self.requires_grad or other.requires_grad):
-            return Div.apply(self, other)
-        return self._div_raw(other)
+            res = Div.apply(self, other)
+        else:
+            res = self._div_raw(other)
+        _record_graph("div", [self, other], res)
+        return res
 
     def __rtruediv__(self, other: Any) -> 'Tensor':
-        return Tensor(other).__truediv__(self)
+        return Tensor(other, device=self.device).__truediv__(self)
 
     def __pow__(self, p: Any) -> 'Tensor':
         from nevula.autograd.engine import GradMode
         from nevula.autograd.functions import Pow
         if GradMode.is_enabled() and self.requires_grad:
-            return Pow.apply(self, p)
-        return self._pow_raw(p)
+            res = Pow.apply(self, p)
+        else:
+            res = self._pow_raw(p)
+        _record_graph("pow", [self, p], res)
+        return res
 
     def __neg__(self) -> 'Tensor':
         from nevula.autograd.engine import GradMode
         from nevula.autograd.functions import Neg
         if GradMode.is_enabled() and self.requires_grad:
-            return Neg.apply(self)
-        return self._neg_raw()
+            res = Neg.apply(self)
+        else:
+            res = self._neg_raw()
+        _record_graph("neg", [self], res)
+        return res
 
     def __matmul__(self, other: Any) -> 'Tensor':
         return self.matmul(other)
 
     def __rmatmul__(self, other: Any) -> 'Tensor':
-        return Tensor(other).matmul(self)
+        return Tensor(other, device=self.device).matmul(self)
 
     def matmul(self, other: Any) -> 'Tensor':
         """Matrix multiplication."""
         if not isinstance(other, Tensor):
-            other = Tensor(other)
+            other = Tensor(other, device=self.device)
+        self._check_same_device(other)
         from nevula.autograd.engine import GradMode
         from nevula.autograd.functions import MatMul
         if GradMode.is_enabled() and (self.requires_grad or other.requires_grad):
-            return MatMul.apply(self, other)
-        return self._matmul_raw(other)
+            res = MatMul.apply(self, other)
+        else:
+            res = self._matmul_raw(other)
+        _record_graph("matmul", [self, other], res)
+        return res
 
     def sum(self, axis: Optional[Any] = None, keepdims: bool = False) -> 'Tensor':
         """Computes the sum along specified axis or all dimensions."""
         from nevula.autograd.engine import GradMode
         from nevula.autograd.functions import Sum
         if GradMode.is_enabled() and self.requires_grad:
-            return Sum.apply(self, axis, keepdims)
-        return self._sum_raw(axis=axis, keepdims=keepdims)
+            res = Sum.apply(self, axis, keepdims)
+        else:
+            res = self._sum_raw(axis=axis, keepdims=keepdims)
+        _record_graph("sum", [self], res, axis=axis, keepdims=keepdims)
+        return res
 
     def mean(self, axis: Optional[Any] = None, keepdims: bool = False) -> 'Tensor':
         """Computes the arithmetic mean along specified axis or all dimensions."""
         from nevula.autograd.engine import GradMode
         from nevula.autograd.functions import Mean
         if GradMode.is_enabled() and self.requires_grad:
-            return Mean.apply(self, axis, keepdims)
-        return self._mean_raw(axis=axis, keepdims=keepdims)
+            res = Mean.apply(self, axis, keepdims)
+        else:
+            res = self._mean_raw(axis=axis, keepdims=keepdims)
+        _record_graph("mean", [self], res, axis=axis, keepdims=keepdims)
+        return res
 
     def relu(self) -> 'Tensor':
         """Applies rectified linear unit elementwise."""
         from nevula.autograd.functions import ReLU
-        return ReLU.apply(self)
+        res = ReLU.apply(self)
+        _record_graph("relu", [self], res)
+        return res
 
     def sigmoid(self) -> 'Tensor':
         """Applies sigmoid elementwise."""
         from nevula.autograd.functions import Sigmoid
-        return Sigmoid.apply(self)
+        res = Sigmoid.apply(self)
+        _record_graph("sigmoid", [self], res)
+        return res
 
     def tanh(self) -> 'Tensor':
         """Applies hyperbolic tangent elementwise."""
         from nevula.autograd.functions import Tanh
-        return Tanh.apply(self)
+        res = Tanh.apply(self)
+        _record_graph("tanh", [self], res)
+        return res
+
 
     # 🏭 7. Factory Methods
     @classmethod
-    def zeros(cls, shape: tuple[int, ...], requires_grad: bool = False) -> 'Tensor':
-        """Creates a tensor of all zeros with the given shape."""
+    def zeros(cls, shape: tuple[int, ...], requires_grad: bool = False, device: Union[str, Device] = "cpu") -> 'Tensor':
+        """Creates a tensor of all zeros with the given shape on the specified device."""
         num = _prod(shape)
-        return cls([0.0] * num, shape=tuple(shape), requires_grad=requires_grad)
+        return cls([0.0] * num, shape=tuple(shape), requires_grad=requires_grad, device=device)
 
     @classmethod
-    def ones(cls, shape: tuple[int, ...], requires_grad: bool = False) -> 'Tensor':
-        """Creates a tensor of all ones with the given shape."""
+    def ones(cls, shape: tuple[int, ...], requires_grad: bool = False, device: Union[str, Device] = "cpu") -> 'Tensor':
+        """Creates a tensor of all ones with the given shape on the specified device."""
         num = _prod(shape)
-        return cls([1.0] * num, shape=tuple(shape), requires_grad=requires_grad)
+        return cls([1.0] * num, shape=tuple(shape), requires_grad=requires_grad, device=device)
 
     @classmethod
-    def zeros_like(cls, other: 'Tensor', requires_grad: bool = False) -> 'Tensor':
-        """Creates a tensor of zeros matching the shape of another tensor."""
-        return cls.zeros(other.shape, requires_grad=requires_grad)
+    def zeros_like(cls, other: 'Tensor', requires_grad: bool = False, device: Optional[Union[str, Device]] = None) -> 'Tensor':
+        """Creates a tensor of zeros matching the shape and device of another tensor."""
+        dev = other.device if device is None else device
+        return cls.zeros(other.shape, requires_grad=requires_grad, device=dev)
 
     @classmethod
-    def ones_like(cls, other: 'Tensor', requires_grad: bool = False) -> 'Tensor':
-        """Creates a tensor of ones matching the shape of another tensor."""
-        return cls.ones(other.shape, requires_grad=requires_grad)
+    def ones_like(cls, other: 'Tensor', requires_grad: bool = False, device: Optional[Union[str, Device]] = None) -> 'Tensor':
+        """Creates a tensor of ones matching the shape and device of another tensor."""
+        dev = other.device if device is None else device
+        return cls.ones(other.shape, requires_grad=requires_grad, device=dev)
 
     def item(self) -> Any:
         """Returns the value of this tensor as a standard Python number."""
         if _prod(self.shape) != 1:
             raise ValueError("only one element tensors can be converted to Python scalars")
-        return self.data[self.offset]
+        val = self.data[self.offset]
+        return val.item() if hasattr(val, "item") else val
 
     def __float__(self) -> float:
         return float(self.item())
@@ -619,12 +701,18 @@ class Tensor:
     def to_list(self):
         """Converts the tensor to a nested Python list."""
         if len(self.shape) == 0:
-            return self.data[self.offset]
+            val = self.data[self.offset]
+            return val.item() if hasattr(val, "item") else val
 
         def convert(idx_prefix):
             dim = len(idx_prefix)
             if dim == len(self.shape) - 1:
-                return [self[idx_prefix + (i,)] for i in range(self.shape[dim])]
+                return [
+                    self[idx_prefix + (i,)].item()
+                    if hasattr(self[idx_prefix + (i,)], "item")
+                    else self[idx_prefix + (i,)]
+                    for i in range(self.shape[dim])
+                ]
             return [convert(idx_prefix + (i,)) for i in range(self.shape[dim])]
 
         return convert(())
@@ -632,6 +720,8 @@ class Tensor:
     def __repr__(self) -> str:
         """Clean string representation for printing."""
         extra = []
+        if self.device.type != "cpu":
+            extra.append(f"device='{self.device.type}'")
         if self.grad_fn is not None:
             extra.append(f"grad_fn={self.grad_fn}")
         elif self.requires_grad:

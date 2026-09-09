@@ -46,17 +46,17 @@ class CrossEntropy(Function):
                 p_target = max(p_row[target_idx], 1e-15)
                 losses.append(-math.log(p_target))
 
-        probs = Tensor(probs_data, shape=(n, c))
+        probs = Tensor(probs_data, shape=(n, c), device=logits.device)
         ctx.save_for_backward(probs, target)
         ctx.reduction = reduction
         ctx.is_one_hot = is_one_hot
 
         if reduction == "mean":
-            return Tensor(sum(losses) / n)
+            return Tensor(sum(losses) / n, device=logits.device)
         elif reduction == "sum":
-            return Tensor(sum(losses))
+            return Tensor(sum(losses), device=logits.device)
         else:
-            return Tensor(losses, shape=(n,))
+            return Tensor(losses, shape=(n,), device=logits.device)
 
     @staticmethod
     def backward(ctx: Context, grad_output: Any) -> tuple:
@@ -82,4 +82,5 @@ class CrossEntropy(Function):
                 d_logits = (p_ij - t_ij) * scale * g_factor
                 grad_data.append(d_logits)
 
-        return Tensor(grad_data, shape=(n, c)), None, None
+        return Tensor(grad_data, shape=(n, c), device=probs.device), None, None
+
