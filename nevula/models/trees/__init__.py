@@ -1,5 +1,6 @@
-"""
-Tree-based models package for Nevula.
-"""
+from nevula.models.trees.decision_tree import DecisionTreeRegressor, TreeNode
 
-__all__: list[str] = []
+__all__ = [
+    "DecisionTreeRegressor",
+    "TreeNode",
+]

@@ -90,21 +90,19 @@ def list_models(category: Optional[str] = None) -> Union[List[str], Dict[str, Li
     """
     if category is not None:
         cat_lower = category.lower().strip()
-        return sorted([
+        names = {
             meta["display_name"]
             for meta in _REGISTRY.values()
             if meta["category"] == cat_lower
-        ])
+        }
+        return sorted(list(names))
 
-    categorized: Dict[str, List[str]] = {}
+    categorized: Dict[str, set] = {}
     for meta in _REGISTRY.values():
         cat = meta["category"].capitalize()
-        categorized.setdefault(cat, []).append(meta["display_name"])
+        categorized.setdefault(cat, set()).add(meta["display_name"])
 
-    for cat in categorized:
-        categorized[cat] = sorted(categorized[cat])
-
-    return categorized
+    return {cat: sorted(list(names)) for cat, names in categorized.items()}
 
 
 def summary() -> str:

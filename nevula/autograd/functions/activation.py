@@ -64,3 +64,29 @@ class Tanh(Function):
         grad_a = grad_output * (1.0 - out * out)
         return grad_a,
 
+
+class Abs(Function):
+    @staticmethod
+    def forward(ctx: Context, a: Any) -> Any:
+        from nevula.core.tensor import Tensor
+        ctx.save_for_backward(a)
+        out_data = [abs(float(a[idx])) for idx in a._indices_generator()]
+        return Tensor(out_data, shape=a.shape, device=a.device)
+
+    @staticmethod
+    def backward(ctx: Context, grad_output: Any) -> tuple:
+        from nevula.core.tensor import Tensor
+        a, = ctx.saved_tensors
+
+        def sign_fn(x):
+            val = float(x)
+            if val > 0.0:
+                return 1.0
+            elif val < 0.0:
+                return -1.0
+            return 0.0
+
+        sign_data = [sign_fn(a[idx]) for idx in a._indices_generator()]
+        sign = Tensor(sign_data, shape=a.shape, device=a.device)
+        return grad_output * sign,
+

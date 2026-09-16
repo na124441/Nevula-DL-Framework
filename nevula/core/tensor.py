@@ -667,6 +667,16 @@ class Tensor:
         _record_graph("tanh", [self], res)
         return res
 
+    def abs(self) -> 'Tensor':
+        """Applies absolute value elementwise."""
+        from nevula.autograd.functions import Abs
+        res = Abs.apply(self)
+        _record_graph("abs", [self], res)
+        return res
+
+    def __abs__(self) -> 'Tensor':
+        return self.abs()
+
 
     # 🏭 7. Factory Methods
     @classmethod
