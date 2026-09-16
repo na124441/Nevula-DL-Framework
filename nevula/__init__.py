@@ -14,6 +14,8 @@ from nevula import optim
 from nevula import data
 from nevula import models
 from nevula import metrics
+from nevula.nn.functional import sigmoid, softmax, log_softmax
+from nevula.nn import functional
 from nevula.utils.serialization import save, load, save_checkpoint, load_checkpoint
 
 
@@ -25,6 +27,10 @@ def tensor(data, requires_grad: bool = False, shape=None, device="cpu"):
 __all__ = [
     "Tensor",
     "tensor",
+    "sigmoid",
+    "softmax",
+    "log_softmax",
+    "functional",
     "Device",
     "cuda_available",
     "graph_capture",

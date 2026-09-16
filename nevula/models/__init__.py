@@ -8,6 +8,8 @@ from nevula.models.trees.decision_tree import DecisionTreeRegressor
 from nevula.models.ensemble.voting import VotingRegressor
 from nevula.models.ensemble.random_forest import RandomForestRegressor
 from nevula.models.ensemble.gradient_boosting import GradientBoostingRegressor
+from nevula.models.classification.logistic import LogisticRegression
+from nevula.models.classification.svm import SVC, SVM
 from nevula.models import regression
 from nevula.models import classification
 from nevula.models import trees
@@ -24,6 +26,9 @@ __all__ = [
     "VotingRegressor",
     "RandomForestRegressor",
     "GradientBoostingRegressor",
+    "LogisticRegression",
+    "SVC",
+    "SVM",
     "register_model",
     "get_model",
     "list_models",

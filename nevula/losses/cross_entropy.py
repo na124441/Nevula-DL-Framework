@@ -1,3 +1,3 @@
-from nevula.nn.losses import CrossEntropyLoss
+from nevula.nn.losses import CrossEntropyLoss, NLLLoss
 
-__all__ = ["CrossEntropyLoss"]
+__all__ = ["CrossEntropyLoss", "NLLLoss"]

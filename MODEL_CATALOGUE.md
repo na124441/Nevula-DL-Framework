@@ -18,6 +18,10 @@ print(nevula.models.summary())
 ```text
 Available models in Nevula Model Library:
 
+Classification:
+  - LogisticRegression
+  - SVC
+
 Ensemble:
   - GradientBoostingRegressor
   - RandomForestRegressor
@@ -39,6 +43,8 @@ Trees:
 
 | Model | Category | Canonical Key | Aliases | Paradigm | Key Mechanism | Best For | Docs |
 |---|---|---|---|---|---|---|---|
+| **Logistic Regression** | `classification` | `logistic_regression` | `logistic` | Parametric Linear Probabilistic | Sigmoid Link, Softmax, BCEWithLogits & Autograd GD | Binary & multiclass classification, calibrated class probabilities | [Docs](docs/models/logistic_regression.md) |
+| **Support Vector Machine (SVC)** | `classification` | `svc` | `svm`, `support_vector_classifier` | Margin-Based Linear | Primal Hinge / Squared Hinge Loss & $L_2$ Regularization | Maximum margin classification, outlier resilience, support vector localization | [Docs](docs/models/svm.md) |
 | **Linear Regression** | `regression` | `linear_regression` | `linear`, `ols` | Parametric Linear | Closed-form OLS & Autograd GD | Baseline linear problems, continuous targets | [Docs](docs/models/linear_regression.md) |
 | **Ridge Regression** | `regression` | `ridge_regression` | `ridge`, `tikhonov` | Parametric Regularized Linear | $L_2$ Regularization ($\frac{\alpha}{2}\|w\|^2$) | Multicollinear features, ill-conditioned matrices | [Docs](docs/models/ridge_regression.md) |
 | **Lasso Regression** | `regression` | `lasso_regression` | `lasso`, `l1_regression` | Parametric Sparse Linear | $L_1$ Regularization ($\alpha\|w\|_1$) & Subgradient / Coordinate Descent | High-dimensional data, automatic feature selection | [Docs](docs/models/lasso_regression.md) |
@@ -52,9 +58,42 @@ Trees:
 
 ## 🔬 Model Deep Dive
 
-### 1. Regression Models (`nevula.models.regression`)
+### 1. Classification Models (`nevula.models.classification`)
 
-#### 1.1 Linear Regression (`LinearRegression`)
+#### 1.1 Logistic Regression (`LogisticRegression`)
+- **Module**: `nevula.models.classification.logistic`
+- **Link Functions**:
+  - Binary: Sigmoid link function $\sigma(z) = \frac{1}{1 + e^{-z}}$, trained with numerically stable `BCEWithLogitsLoss`.
+  - Multiclass: Softmax normalized exponential distribution $P(y = c \mid x) = \frac{e^{z_c}}{\sum_k e^{z_k}}$, trained with `CrossEntropyLoss`.
+- **Objective Function**:
+  $$\mathcal{L}_{\text{BCE}}(W, b) = -\frac{1}{N} \sum_{i=1}^N \left[ y_i \log(\sigma(z_i)) + (1 - y_i) \log(1 - \sigma(z_i)) \right] + \mathcal{R}(W)$$
+- **Key Features**:
+  - Probabilistic classification with calibrated class likelihoods via `.predict_proba()`.
+  - Linear decision boundary hyperplane extraction via `.decision_function()`.
+  - Regularization options: $L_2$ (Ridge penalty) and $L_1$ (Lasso penalty with subgradients).
+  - Evaluates accuracy, precision, recall, F1 score, confusion matrix, and binary cross-entropy loss.
+- **Example**: `examples/logistic_regression.py`
+- **Interactive Lab**: `model_lab/classification/logistic_regression/`
+
+#### 1.2 Support Vector Machine (`SVC` / `SVM`)
+- **Module**: `nevula.models.classification.svm`
+- **Aliases**: `svm`, `support_vector_classifier`
+- **Objective Function**:
+  $$\min_{W, b} \mathcal{L}(W, b) = \frac{1}{N} \sum_{i=1}^N \max(0, 1 - y_i (x_i^T W + b))^p + \frac{1}{2C} \|W\|_2^2$$
+  where $p = 1$ for standard Hinge Loss and $p = 2$ for Squared Hinge Loss.
+- **Key Features**:
+  - Maximum geometric margin classification with subgradients computed via autograd.
+  - Native Multiclass One-vs-Rest (OvR) hyperplane training.
+  - Diagnostic Support Vector extraction (`support_vectors`, `support_vectors_mask`, `support_vectors_ratio`, `n_support_`).
+  - Evaluates accuracy, precision, recall, F1 score, confusion matrix, and hinge loss score.
+- **Example**: `examples/svm.py`
+- **Interactive Lab**: `model_lab/classification/svm/`
+
+---
+
+### 2. Regression Models (`nevula.models.regression`)
+
+#### 2.1 Linear Regression (`LinearRegression`)
 - **Module**: `nevula.models.regression.linear`
 - **Objective Function**:
   $$\mathcal{L}_{\text{MSE}}(W, b) = \frac{1}{2N} \sum_{i=1}^N \left( \hat{y}_i - y_i \right)^2$$

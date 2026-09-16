@@ -660,6 +660,27 @@ class Tensor:
         _record_graph("sigmoid", [self], res)
         return res
 
+    def log_sigmoid(self) -> 'Tensor':
+        """Applies log-sigmoid elementwise: log(1 / (1 + exp(-x)))."""
+        from nevula.autograd.functions import LogSigmoid
+        res = LogSigmoid.apply(self)
+        _record_graph("log_sigmoid", [self], res)
+        return res
+
+    def softmax(self, dim: int = -1) -> 'Tensor':
+        """Applies Softmax along the specified dimension."""
+        from nevula.autograd.functions import Softmax
+        res = Softmax.apply(self, dim)
+        _record_graph("softmax", [self], res, dim=dim)
+        return res
+
+    def log_softmax(self, dim: int = -1) -> 'Tensor':
+        """Applies LogSoftmax along the specified dimension."""
+        from nevula.autograd.functions import LogSoftmax
+        res = LogSoftmax.apply(self, dim)
+        _record_graph("log_softmax", [self], res, dim=dim)
+        return res
+
     def tanh(self) -> 'Tensor':
         """Applies hyperbolic tangent elementwise."""
         from nevula.autograd.functions import Tanh

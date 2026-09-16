@@ -7,6 +7,10 @@ The authoritative Model Catalogue is maintained at the root of the repository:
 
 ## Quick Navigation
 
+### Classification Models
+- [Logistic Regression](logistic_regression.md)
+- [Support Vector Machine (SVC / SVM)](svm.md)
+
 ### Regression Models
 - [Linear Regression](linear_regression.md)
 - [Ridge Regression](ridge_regression.md)
