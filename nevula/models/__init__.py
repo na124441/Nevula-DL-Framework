@@ -4,7 +4,7 @@ from nevula.models.regression.linear import LinearRegression
 from nevula.models.regression.ridge import RidgeRegression
 from nevula.models.regression.lasso import LassoRegression
 from nevula.models.regression.svr import SVR
-from nevula.models.trees.decision_tree import DecisionTreeRegressor
+from nevula.models.trees.decision_tree import DecisionTreeRegressor, DecisionTreeClassifier
 from nevula.models.ensemble.voting import VotingRegressor
 from nevula.models.ensemble.random_forest import RandomForestRegressor
 from nevula.models.ensemble.gradient_boosting import GradientBoostingRegressor
@@ -23,6 +23,7 @@ __all__ = [
     "LassoRegression",
     "SVR",
     "DecisionTreeRegressor",
+    "DecisionTreeClassifier",
     "VotingRegressor",
     "RandomForestRegressor",
     "GradientBoostingRegressor",

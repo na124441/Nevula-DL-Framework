@@ -79,8 +79,33 @@ def r2_score(y_true: Union[Tensor, Any], y_pred: Union[Tensor, Any]) -> float:
     return float(1.0 - (ss_res / ss_tot))
 
 
+def root_mean_squared_error(y_true: Union[Tensor, Any], y_pred: Union[Tensor, Any]) -> float:
+    """
+    Computes the Root Mean Squared Error (RMSE) between ground truth and predictions.
+
+    Args:
+        y_true: Ground truth target values (Tensor, ndarray, or sequence).
+        y_pred: Predicted target values.
+
+    Returns:
+        float: Computed RMSE score.
+    """
+    return float(np.sqrt(mean_squared_error(y_true, y_pred)))
+
+
+# Aliases
+mse_score = mean_squared_error
+mae_score = mean_absolute_error
+rmse_score = root_mean_squared_error
+r_squared_score = r2_score
+
 __all__ = [
     "mean_squared_error",
     "mean_absolute_error",
+    "root_mean_squared_error",
     "r2_score",
+    "mse_score",
+    "mae_score",
+    "rmse_score",
+    "r_squared_score",
 ]

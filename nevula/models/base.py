@@ -154,7 +154,7 @@ class BaseModel(Module, ABC):
             "state_dict": self.state_dict(),
             "is_fitted": self._is_fitted,
         }
-        save_checkpoint(checkpoint, filepath)
+        save_checkpoint(filepath, self, extra_checkpoint=checkpoint)
 
     def load(self, filepath: str) -> "BaseModel":
         """
@@ -168,8 +168,14 @@ class BaseModel(Module, ABC):
         """
         from nevula.utils.serialization import load_checkpoint
 
-        checkpoint = load_checkpoint(filepath)
-        if "state_dict" in checkpoint:
+        checkpoint = load_checkpoint(filepath, model=self)
+        if "extra_checkpoint" in checkpoint and isinstance(checkpoint["extra_checkpoint"], dict):
+            extra = checkpoint["extra_checkpoint"]
+            if "state_dict" in extra:
+                self.load_state_dict(extra["state_dict"])
+            if "is_fitted" in extra:
+                self._is_fitted = extra["is_fitted"]
+        elif "state_dict" in checkpoint:
             self.load_state_dict(checkpoint["state_dict"])
         if "is_fitted" in checkpoint:
             self._is_fitted = checkpoint["is_fitted"]
