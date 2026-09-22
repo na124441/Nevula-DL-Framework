@@ -268,38 +268,42 @@ def log_loss_score(y_true: Any, y_prob: Any, eps: float = 1e-15) -> float:
         prob = np.array(y_prob, dtype=np.float64)
 
     if isinstance(y_true, Tensor):
-        yt = np.array(y_true.to_list())
+        yt = np.array(y_true.to_list(), dtype=np.float64)
     elif isinstance(y_true, np.ndarray):
-        yt = y_true
+        yt = y_true.astype(np.float64)
     else:
-        yt = np.array(y_true)
-
-    yt = yt.ravel()
+        yt = np.array(y_true, dtype=np.float64)
 
     # Binary case where prob is 1D or (N, 1)
     if prob.ndim == 1 or (prob.ndim == 2 and prob.shape[1] == 1):
+        yt_1d = yt.ravel()
+        if len(yt_1d) != len(prob.ravel()):
+            raise ValueError(f"Shape mismatch: y_true has {len(yt_1d)} elements, y_prob has {len(prob.ravel())}.")
         p1 = np.clip(prob.ravel(), eps, 1.0 - eps)
-        loss = -(yt * np.log(p1) + (1.0 - yt) * np.log(1.0 - p1))
+        loss = -(yt_1d * np.log(p1) + (1.0 - yt_1d) * np.log(1.0 - p1))
         return float(np.mean(loss))
 
     # Multiclass case: prob is (N, K)
+    if prob.ndim != 2:
+        raise ValueError(f"y_prob must be 1D or 2D array, got shape {prob.shape}")
+
     N, K = prob.shape
     prob = np.clip(prob, eps, 1.0 - eps)
     # Normalize rows to sum to 1
     prob = prob / np.sum(prob, axis=1, keepdims=True)
 
-    # Convert integer targets to one-hot if needed
-    unique_labels = np.unique(yt)
-    if yt.ndim == 1:
-        # Check if integer indices 0..K-1
-        int_labels = yt.astype(int)
+    if yt.ndim == 2 and yt.shape == (N, K):
+        yt_mat = yt
+    else:
+        yt_1d = yt.ravel()
+        if len(yt_1d) != N:
+            raise ValueError(f"Shape mismatch: y_true has {len(yt_1d)} samples, y_prob has {N} samples.")
+        int_labels = yt_1d.astype(int)
         one_hot = np.zeros((N, K), dtype=np.float64)
         for i, lab in enumerate(int_labels):
             if 0 <= lab < K:
                 one_hot[i, lab] = 1.0
         yt_mat = one_hot
-    else:
-        yt_mat = yt
 
     loss = -np.sum(yt_mat * np.log(prob)) / N
     return float(loss)
@@ -471,6 +475,14 @@ def roc_auc_score(
     return float(np.mean(aucs))
 
 
+# Aliases
+accuracy = accuracy_score
+precision = precision_score
+recall = recall_score
+f1 = f1_score
+roc_auc = roc_auc_score
+log_loss = log_loss_score
+
 __all__ = [
     "accuracy_score",
     "precision_score",
@@ -483,4 +495,11 @@ __all__ = [
     "auc",
     "roc_curve",
     "roc_auc_score",
+    "accuracy",
+    "precision",
+    "recall",
+    "f1",
+    "roc_auc",
+    "log_loss",
 ]
+

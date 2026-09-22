@@ -18,6 +18,10 @@ from nevula.metrics import (
     mae_score,
     rmse_score,
     r_squared_score,
+    mae,
+    mse,
+    rmse,
+    r2,
     accuracy_score,
     precision_score,
     recall_score,
@@ -27,7 +31,14 @@ from nevula.metrics import (
     roc_curve,
     roc_auc_score,
     log_loss_score,
+    accuracy,
+    precision,
+    recall,
+    f1,
+    roc_auc,
+    log_loss,
 )
+
 
 
 class TestRegressionMetrics(unittest.TestCase):
@@ -205,6 +216,86 @@ class TestClassificationMetrics(unittest.TestCase):
         self.assertAlmostEqual(precision_score(t_true, t_pred), 1.0)
         self.assertAlmostEqual(recall_score(t_true, t_pred), 2.0 / 3.0)
 
+    def test_log_loss_binary(self):
+        y_true = [1, 0, 1, 0]
+        y_prob = [0.9, 0.1, 0.8, 0.2]
+
+        score = log_loss_score(y_true, y_prob)
+        # -[ln(0.9) + ln(0.9) + ln(0.8) + ln(0.8)] / 4
+        expected = -0.25 * (np.log(0.9) + np.log(0.9) + np.log(0.8) + np.log(0.8))
+        self.assertAlmostEqual(score, expected, places=5)
+        self.assertAlmostEqual(log_loss(y_true, y_prob), score)
+
+        # Tensor input
+        t_true = Tensor(y_true)
+        t_prob = Tensor(y_prob)
+        self.assertAlmostEqual(log_loss_score(t_true, t_prob), score)
+
+    def test_log_loss_multiclass(self):
+        y_true = [0, 1, 2]
+        y_prob = np.array([
+            [0.8, 0.1, 0.1],
+            [0.1, 0.8, 0.1],
+            [0.2, 0.2, 0.6],
+        ])
+        score = log_loss_score(y_true, y_prob)
+        expected = -(np.log(0.8) + np.log(0.8) + np.log(0.6)) / 3.0
+        self.assertAlmostEqual(score, expected, places=5)
+
+        # One-hot true targets
+        y_true_onehot = np.array([
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ])
+        score_oh = log_loss_score(y_true_onehot, y_prob)
+        self.assertAlmostEqual(score_oh, expected, places=5)
+
+    def test_sklearn_parity(self):
+        from sklearn import metrics as skm
+
+        # Classification
+        y_true = np.array([0, 1, 1, 0, 1, 0, 1, 1])
+        y_pred = np.array([0, 1, 0, 0, 1, 1, 1, 0])
+        y_score = np.array([0.1, 0.85, 0.4, 0.2, 0.9, 0.6, 0.75, 0.35])
+
+        self.assertAlmostEqual(accuracy_score(y_true, y_pred), skm.accuracy_score(y_true, y_pred))
+        self.assertAlmostEqual(precision_score(y_true, y_pred), skm.precision_score(y_true, y_pred))
+        self.assertAlmostEqual(recall_score(y_true, y_pred), skm.recall_score(y_true, y_pred))
+        self.assertAlmostEqual(f1_score(y_true, y_pred), skm.f1_score(y_true, y_pred))
+        self.assertAlmostEqual(roc_auc_score(y_true, y_score), skm.roc_auc_score(y_true, y_score))
+        self.assertAlmostEqual(log_loss_score(y_true, y_score), skm.log_loss(y_true, y_score), places=5)
+        np.testing.assert_array_equal(confusion_matrix(y_true, y_pred), skm.confusion_matrix(y_true, y_pred))
+
+        # Regression
+        y_reg_true = np.array([3.0, -0.5, 2.0, 7.0])
+        y_reg_pred = np.array([2.5, 0.0, 2.0, 8.0])
+
+        self.assertAlmostEqual(mean_squared_error(y_reg_true, y_reg_pred), skm.mean_squared_error(y_reg_true, y_reg_pred))
+        self.assertAlmostEqual(mean_absolute_error(y_reg_true, y_reg_pred), skm.mean_absolute_error(y_reg_true, y_reg_pred))
+        self.assertAlmostEqual(root_mean_squared_error(y_reg_true, y_reg_pred), skm.root_mean_squared_error(y_reg_true, y_reg_pred))
+        self.assertAlmostEqual(r2_score(y_reg_true, y_reg_pred), skm.r2_score(y_reg_true, y_reg_pred))
+
+    def test_aliases(self):
+        y_true = [1, 0, 1]
+        y_pred = [1, 0, 0]
+        y_prob = [0.9, 0.1, 0.4]
+
+        self.assertEqual(accuracy(y_true, y_pred), accuracy_score(y_true, y_pred))
+        self.assertEqual(precision(y_true, y_pred), precision_score(y_true, y_pred))
+        self.assertEqual(recall(y_true, y_pred), recall_score(y_true, y_pred))
+        self.assertEqual(f1(y_true, y_pred), f1_score(y_true, y_pred))
+        self.assertEqual(roc_auc(y_true, y_prob), roc_auc_score(y_true, y_prob))
+        self.assertEqual(log_loss(y_true, y_prob), log_loss_score(y_true, y_prob))
+
+        y_r_true = [1.0, 2.0]
+        y_r_pred = [1.5, 2.5]
+        self.assertEqual(mae(y_r_true, y_r_pred), mean_absolute_error(y_r_true, y_r_pred))
+        self.assertEqual(mse(y_r_true, y_r_pred), mean_squared_error(y_r_true, y_r_pred))
+        self.assertEqual(rmse(y_r_true, y_r_pred), root_mean_squared_error(y_r_true, y_r_pred))
+        self.assertEqual(r2(y_r_true, y_r_pred), r2_score(y_r_true, y_r_pred))
+
 
 if __name__ == "__main__":
     unittest.main()
+

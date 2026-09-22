@@ -7,6 +7,10 @@ from nevula.metrics.regression import (
     mae_score,
     rmse_score,
     r_squared_score,
+    mae,
+    mse,
+    rmse,
+    r2,
 )
 from nevula.metrics.classification import (
     accuracy_score,
@@ -20,6 +24,12 @@ from nevula.metrics.classification import (
     auc,
     roc_curve,
     roc_auc_score,
+    accuracy,
+    precision,
+    recall,
+    f1,
+    roc_auc,
+    log_loss,
 )
 
 __all__ = [
@@ -32,6 +42,10 @@ __all__ = [
     "mae_score",
     "rmse_score",
     "r_squared_score",
+    "mae",
+    "mse",
+    "rmse",
+    "r2",
     # Classification
     "accuracy_score",
     "precision_score",
@@ -44,4 +58,11 @@ __all__ = [
     "auc",
     "roc_curve",
     "roc_auc_score",
+    "accuracy",
+    "precision",
+    "recall",
+    "f1",
+    "roc_auc",
+    "log_loss",
 ]
+

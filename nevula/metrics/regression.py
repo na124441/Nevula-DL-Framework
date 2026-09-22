@@ -98,6 +98,10 @@ mse_score = mean_squared_error
 mae_score = mean_absolute_error
 rmse_score = root_mean_squared_error
 r_squared_score = r2_score
+mse = mean_squared_error
+mae = mean_absolute_error
+rmse = root_mean_squared_error
+r2 = r2_score
 
 __all__ = [
     "mean_squared_error",
@@ -108,4 +112,9 @@ __all__ = [
     "mae_score",
     "rmse_score",
     "r_squared_score",
+    "mae",
+    "mse",
+    "rmse",
+    "r2",
 ]
+
