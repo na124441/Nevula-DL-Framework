@@ -272,7 +272,24 @@ class Tensor:
         return tuple(mapped)
 
     def __getitem__(self, indices):
-        """Allows tensor[i, j] syntax to read values."""
+        """Allows tensor[i, j] syntax to read values, slice or fancy index."""
+        if isinstance(indices, (slice, list, range, np.ndarray)) or (isinstance(indices, Tensor) and len(indices.shape) <= 1):
+            arr = self.numpy()
+            idx = indices.numpy().astype(int) if isinstance(indices, Tensor) else indices
+            res = arr[idx]
+            return Tensor(res, device=self.device, requires_grad=self.requires_grad)
+
+        if isinstance(indices, tuple) and any(isinstance(idx, (slice, list, range, np.ndarray, Tensor)) for idx in indices):
+            arr = self.numpy()
+            clean_indices = []
+            for idx in indices:
+                if isinstance(idx, Tensor):
+                    clean_indices.append(idx.numpy().astype(int))
+                else:
+                    clean_indices.append(idx)
+            res = arr[tuple(clean_indices)]
+            return Tensor(res, device=self.device, requires_grad=self.requires_grad)
+
         if not isinstance(indices, tuple):
             indices = (indices,)
 
@@ -731,6 +748,12 @@ class Tensor:
         val = self.data[self.offset]
         return val.item() if hasattr(val, "item") else val
 
+    def __len__(self) -> int:
+        """Returns the size of the first dimension."""
+        if len(self.shape) == 0:
+            raise TypeError("len() of a 0-d tensor")
+        return self.shape[0]
+
     def __float__(self) -> float:
         return float(self.item())
 
@@ -755,6 +778,27 @@ class Tensor:
             return [convert(idx_prefix + (i,)) for i in range(self.shape[dim])]
 
         return convert(())
+
+    def numpy(self) -> np.ndarray:
+        """Converts the tensor to a NumPy ndarray."""
+        try:
+            from nevula.backend.registry import get_backend
+            backend = get_backend(self.device.type)
+            flat_np = backend.to_numpy(self.data)
+            # Check if contiguous with standard strides and offset 0
+            expected_stride = 1
+            contiguous = (self.offset == 0)
+            if contiguous:
+                for dim, s in zip(reversed(self.shape), reversed(self.strides)):
+                    if s != expected_stride:
+                        contiguous = False
+                        break
+                    expected_stride *= dim
+            if contiguous:
+                return np.array(flat_np, copy=True).reshape(self.shape)
+        except Exception:
+            pass
+        return np.array(self.to_list(), dtype=np.float64)
 
     def __repr__(self) -> str:
         """Clean string representation for printing."""

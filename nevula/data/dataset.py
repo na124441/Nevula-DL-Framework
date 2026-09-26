@@ -45,3 +45,24 @@ class TensorDataset(Dataset):
         if len(self.tensors) == 1:
             return self.tensors[0][index]
         return tuple(tensor[index] for tensor in self.tensors)
+
+
+class Subset(Dataset):
+    """
+    Subset of a dataset at specified indices.
+
+    Args:
+        dataset (Dataset): The whole Dataset.
+        indices (Sequence[int]): Indices in the whole set selected for subset.
+    """
+
+    def __init__(self, dataset: Dataset, indices: Sequence[int]):
+        self.dataset = dataset
+        self.indices = list(indices)
+
+    def __getitem__(self, index: int) -> Any:
+        return self.dataset[self.indices[index]]
+
+    def __len__(self) -> int:
+        return len(self.indices)
+

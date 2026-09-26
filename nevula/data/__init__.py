@@ -1,4 +1,4 @@
-from nevula.data.dataset import Dataset, TensorDataset
+from nevula.data.dataset import Dataset, TensorDataset, Subset
 from nevula.data.sampler import (
     Sampler,
     SequentialSampler,
@@ -16,6 +16,7 @@ from nevula.data.transforms import (
 __all__ = [
     "Dataset",
     "TensorDataset",
+    "Subset",
     "Sampler",
     "SequentialSampler",
     "RandomSampler",

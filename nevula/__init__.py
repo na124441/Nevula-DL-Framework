@@ -14,6 +14,7 @@ from nevula import optim
 from nevula import data
 from nevula import models
 from nevula import metrics
+from nevula import model_selection
 from nevula.nn.functional import sigmoid, softmax, log_softmax
 from nevula.nn import functional
 from nevula.utils.serialization import save, load, save_checkpoint, load_checkpoint
@@ -46,6 +47,7 @@ __all__ = [
     "nn",
     "losses",
     "metrics",
+    "model_selection",
     "optim",
     "data",
     "models",

@@ -84,6 +84,21 @@ class BaseModel(Module, ABC):
         """
         raise NotImplementedError("Every model must implement get_config()")
 
+    def get_params(self, deep: bool = True) -> Dict[str, Any]:
+        """
+        Returns hyperparameter dictionary for this model instance.
+        """
+        return dict(self.get_config())
+
+    def set_params(self, **params: Any) -> "BaseModel":
+        """
+        Updates hyperparameters of this model instance.
+        """
+        for key, value in params.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
+        return self
+
     def evaluate(
         self,
         X: Any,
