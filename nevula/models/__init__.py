@@ -10,11 +10,13 @@ from nevula.models.ensemble.random_forest import RandomForestRegressor
 from nevula.models.ensemble.gradient_boosting import GradientBoostingRegressor
 from nevula.models.classification.logistic import LogisticRegression
 from nevula.models.classification.svm import SVC, SVM
+from nevula.models.clustering.kmeans import KMeans, KMeansPlusPlus
 from nevula.models import regression
 from nevula.models import classification
 from nevula.models import trees
 from nevula.models import ensemble
 from nevula.models import deep
+from nevula.models import clustering
 
 __all__ = [
     "BaseModel",
@@ -30,6 +32,8 @@ __all__ = [
     "LogisticRegression",
     "SVC",
     "SVM",
+    "KMeans",
+    "KMeansPlusPlus",
     "register_model",
     "get_model",
     "list_models",
@@ -39,4 +43,5 @@ __all__ = [
     "trees",
     "ensemble",
     "deep",
+    "clustering",
 ]

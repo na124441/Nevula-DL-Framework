@@ -22,6 +22,10 @@ Classification:
   - LogisticRegression
   - SVC
 
+Clustering:
+  - KMeans
+  - KMeansPlusPlus
+
 Ensemble:
   - GradientBoostingRegressor
   - RandomForestRegressor
@@ -53,6 +57,8 @@ Trees:
 | **Voting Regressor** | `ensemble` | `voting_regressor` | `voting` | Heterogeneous Ensembling | Weighted/Uniform Model Prediction Averaging | Combining diverse inductive biases (e.g. Ridge + SVR + Trees) | [Docs](docs/models/ensemble_learning.md) |
 | **Random Forest Regressor** | `ensemble` | `random_forest_regressor` | `random_forest` | Bagging Ensembling | Bootstrap Aggregating + Random Feature Subspaces | Overcoming tree variance/overfitting, robust non-linear modeling | [Docs](docs/models/ensemble_learning.md) |
 | **Gradient Boosting Regressor** | `ensemble` | `gradient_boosting_regressor` | `gradient_boosting` | Boosting Ensembling | Forward Stage-wise Pseudo-Residual Fitting with Shrinkage | High-accuracy non-linear prediction, bias minimization | [Docs](docs/models/ensemble_learning.md) |
+| **K-Means / K-Means++** | `clustering` | `kmeans` | `kmeans_plus_plus`, `k_means` | Centroid-Based Unsupervised | Lloyd's Algorithm + Arthur-Vassilvitskii $D(x)^2$ Seeding | Partitioning data, vector quantization, cluster analysis | [Example](examples/kmeans_clustering.py) |
+
 
 ---
 
